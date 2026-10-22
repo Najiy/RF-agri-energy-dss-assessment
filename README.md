@@ -1,6 +1,6 @@
 # Agri-Energy DSS pipeline: Tasks 1 to 3
 
-Single-cluster engine for the Agri-Energy Decision Support System assessment. Give it a latitude and longitude;
+Single-cluster engine for the Agri-Energy Decision Support System. Give it a latitude and longitude;
 it finds the farm parcels within 150 m, works out their daily water need, fetches sunshine data from NASA,
 sizes a solar pump and reports the surplus electricity.
 
@@ -10,8 +10,6 @@ sizes a solar pump and reports the surplus electricity.
 
 Task 4 (PUE selection and payback) is not implemented.
 
-**New to the project? Read [SUMMARY.md](SUMMARY.md)** first. It explains the data, the steps, the equations and
-the preprocessing in plain language, with diagrams and a worked example.
 
 ## Run
 
@@ -20,7 +18,7 @@ python -m venv .venv
 .venv\Scripts\activate                  # Windows; macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 
-python run_pipeline.py --download       # fetches data/PT.zip (37 MB) once, then runs the verification suite
+python run_pipeline.py --download       # fetches data/PT.zip (37 MB) once, then runs the executable script
 python run_pipeline.py --lat 38.0829 --lon -8.1252      # any site
 python -m pytest                        # 148 tests, offline except two groups noted below
 ```
@@ -31,8 +29,7 @@ Exit code: `0` = everything worked, `1` = dataset, input or NASA error (or a cus
 | File | Role |
 |---|---|
 | `dss_pipeline.py` | All the logic: loading, clustering, equations, NASA client, pump choice, `evaluate_site` |
-| `run_pipeline.py` | Command-line runner; the default run is the assessment's verification suite |
-| `SUMMARY.md` | Plain-language walkthrough for newcomers |
+| `run_pipeline.py` | Command-line runner; the default run is the DSS's verification executable |
 | `tests/` | Unit tests on made-up parcels with hand-calculated answers; NASA tests replay saved replies (`tests/fixtures/`); real-data tests (`-m integration`, need `data/PT.zip`) and one live NASA test (`-m network`), each skipped when its resource is unavailable |
 
 ## Code map
@@ -45,6 +42,39 @@ Exit code: `0` = everything worked, `1` = dataset, input or NASA error (or a cus
 | Task 3 | `select_pump` (Table 2 as a DataFrame filter), `pv_energy_kwh_day`, `pump_energy_kwh_day`, `surplus_energy_kwh_day`, `model_energy_balance`, `monthly_energy_profile` |
 | All | `evaluate_site` returns a `SiteAssessment` with the cluster, Task 2 outputs and Task 3 balance |
 
+## Dictionary
+
+| Word | Meaning |
+|---|---|
+| **Parcel** | One field, stored as an outline (a polygon) on a map, plus a label saying what grows there. |
+| **Hectare (ha)** | A unit of land area. 1 ha = 10,000 m², about one and a half football pitches. |
+| **Cluster** | The group of parcels that touch the 150 m circle around your point. One pump serves one cluster. |
+| **Command zone** | The circle itself (radius 150 m, about 7 ha). The area one tube-well can reach. |
+| **Crop code (HCAT)** | A 10-digit number saying what grows in a parcel, for example `3303050000` = olives. |
+| **Crop category** | Our grouping of crop codes into 5 buckets (cereals, orchards, pasture, vegetables, other). Each bucket has a known water need. |
+| **m³ (cubic metre)** | 1,000 litres of water. `m³/ha/day` means cubic metres per hectare per day. |
+| **Head (H)** | How high the pump must lift the water, including losses in the pipe. Here 40 m. |
+| **kW (kilowatt)** | **Power**: how fast energy is used or made *at one moment*. A 3.7 kW motor draws 3.7 kW while it runs. |
+| **kWh (kilowatt-hour)** | **Energy**: power x time. A 3.7 kW motor running 6 hours uses 22.2 kWh. |
+| **kWp (kilowatt-peak)** | The panel rating: power it makes in perfect full sun. A "5 kWp" array makes at most 5 kW. |
+| **PSH (peak sun hours)** | A way to describe daily sunshine: "the sun was as strong as 4.9 hours of perfect full sun". Same number as kWh per m² per day. |
+| **Derate (0.75)** | Real panels lose output to heat, dust and wiring. We assume they deliver 75 % of the ideal figure. |
+| **Efficiency (0.55)** | Only 55 % of the electricity the motor takes ends up lifting water. The rest is lost as heat. |
+| **Tier** | A pump size from the catalog (Tier 1 smallest, Tier 4 largest). |
+| **CRS / EPSG code** | A "coordinate system": the rule for turning places on Earth into numbers. See the next row. |
+| **EPSG:4326** | Latitude and longitude, in **degrees**. What GPS and NASA use. Fine for locating a place, **bad for measuring** (one degree is about 100 km, and it varies). |
+| **EPSG:3763** | A map system made for Portugal where x and y are in **metres**. Good for measuring distances and areas. |
+| **Reproject** | Convert coordinates from one system to another (here degrees to metres). |
+| **Buffer** | A shape drawn around a point at a fixed distance. A 150 m buffer is a circle. |
+| **Spatial index** | A lookup structure for maps, like a book index. It finds the few parcels near a point without checking all 100,000. |
+| **Climatology** | Weather averaged over many years (here 2001 to 2025), not a forecast. |
+| **API** | A web address a program can ask for data. NASA POWER is an API. |
+| **Cache** | Remembering an answer so we do not ask the internet twice for the same thing. |
+| **Exception** | Python's way of stopping with a named error, for example `EmptyClusterError`. |
+| **DataFrame** | A table in Python (rows and columns), from the `pandas` library. A **GeoDataFrame** is the same with a map shape in every row. |
+
+---
+
 ## Findings in the data and the API
 
 | Finding | Handling |
@@ -55,11 +85,62 @@ Exit code: `0` = everything worked, `1` = dataset, input or NASA error (or a cus
 | The spec's Alentejo point (38.015, -7.865) has no parcel within 1.33 km. `PT.zip` holds exactly 100,000 parcels, sparse in Alentejo. | `EmptyClusterError` as specified. The runner reports the nearest parcel and re-sites there. (A9) |
 | Table 2 pairs about 1.35 kWp per motor kW. With a 0.75 derate and 6 h/day pumping, a surplus needs PSH above about 5.9. Portugal's annual mean is about 4.9 to 5.0. | `E_excess` is 0 on the yearly average. The deficit and break-even PSH are printed, and the monthly view shows the May to August surplus. |
 
-Assumptions A1 to A9 are listed in the `dss_pipeline.py` docstring, which also holds the Monte Carlo note.
+Assumptions A1 to A9 are listed in the `dss_pipeline.py` docstring, which also holds the short Monte Carlo note.
 
 Spec verification: central Lisbon raises `EmptyClusterError` with the exact spec message. The spec Alentejo point
 raises it too, because of the data gap above. A re-sited Alentejo site takes about 0.3 to 1 s including the
 NASA request, and a few milliseconds when cached.
+
+## Monte Carlo extension (regional policy modelling)
+
+`dss_pipeline.py` evaluates **one** cluster. A Monte Carlo study repeats that evaluation thousands of times with
+randomly varied inputs, then looks at the spread of results (for example the 10th, 50th and 90th percentile of
+pump cost across a region). Nothing in the engine needs to change, because `evaluate_site` already takes every
+input explicitly and keeps no state between calls:
+
+| What varies | How it plugs into `dss_pipeline.py` |
+|---|---|
+| **Where**: random farm sites in a district | Pick random parcels from the `load_parcels()` table and use a point inside each one. Sites with no farmland raise `EmptyClusterError`; count them as "not farmland" and skip. |
+| **Engineering inputs**: groundwater depth, pump efficiency, pumping hours | Build each draw with `dataclasses.replace(dss.DEFAULT_PARAMS, head_m=...)`. `DesignParameters` is frozen, so draws never overwrite each other. |
+| **Sunshine**: a bad year, a good year | Pass your own `get_solar(lat, lon)` function to `evaluate_site`. It returns a `SolarResource`, so it can sample years instead of using NASA's long-term average. |
+| **Policy**: a pump subsidy, a price paid for surplus electricity | Apply it **after** the run to the outputs: `pump.total_capex_usd` (cost) and `e_excess_kwh_day` (surplus). The engine does not need to know about policy. |
+
+Sketch (not shipped as a script; tested offline with a fixed `get_solar`):
+
+```python
+import dataclasses
+import random
+
+import dss_pipeline as dss
+
+rng = random.Random(42)  # seeded, so every run draws the same sites
+parcels = dss.load_parcels()
+points = parcels.geometry.representative_point().to_crs(dss.WGS84)  # one point inside each parcel
+
+results = []
+for _ in range(1000):
+    i = rng.randrange(len(points))  # draw a site: a random parcel
+    params = dataclasses.replace(dss.DEFAULT_PARAMS, head_m=rng.uniform(20, 80))  # draw a water depth
+
+    try:
+        a = dss.evaluate_site(parcels, points.y.iloc[i], points.x.iloc[i], params)  # or get_solar=my_sampler
+    except dss.EmptyClusterError:
+        continue  # not usable farmland, skip
+
+    results.append((a.energy.pump.total_capex_usd, a.energy.e_excess_kwh_day))
+```
+
+Practical notes:
+
+- **Speed:** with the parcel file loaded and the spatial index built, one site takes a few milliseconds. The only
+  slow part is NASA: one request per 0.01-degree cell (the cache covers repeats). For large runs, download or
+  look up the sunshine data once per region and serve it through `get_solar`.
+- **Reproducibility:** seed the random generator and record the seed with the results.
+- **Parallel runs:** each draw is independent, so draws can be split across processes. Every worker loads the
+  parcel file once.
+- **What the results would show:** with this catalog, the yearly-average surplus is usually zero (see the findings
+  above), so a policy study should look at the monthly profile (`SiteAssessment.monthly_profile()`) or at how
+  often a site reaches a surplus at all.
 
 ## Sample output (site [2])
 
