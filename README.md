@@ -102,6 +102,16 @@ The details are in the docstring at the top of `dss_pipeline.py`. Additionally, 
 parallel en masse computes with current implementation.
 
 
+## 3D visualiser (extra, local only)
+
+An attempt at viewing the results on a map, in `ignore/visualiser/`. It is a React app with a custom renderer: 
+OpenStreetMap tiles, extruded parcels, the 150 m zone and the pump result. See its own README.
+
+```bash
+.venv\Scripts\python ignore/visualiser/export_data.py   # parcels + DSS results -> JSON
+cd ignore/visualiser && npm install && npm run dev      # http://localhost:5173
+```
+
 ## Sample output (site [2])
 
 ```
