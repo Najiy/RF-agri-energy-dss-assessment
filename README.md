@@ -93,54 +93,14 @@ NASA request, and a few milliseconds when cached.
 
 ## Monte Carlo extension (regional policy modelling)
 
-`dss_pipeline.py` evaluates **one** cluster. A Monte Carlo study repeats that evaluation thousands of times with
-randomly varied inputs, then looks at the spread of results (for example the 10th, 50th and 90th percentile of
-pump cost across a region). Nothing in the engine needs to change, because `evaluate_site` already takes every
-input explicitly and keeps no state between calls:
+For regional policy modellling, ff "Monte Carlo" means running the same calculation thousands of times with 
+randomly varied inputs to see the spread of outcomes. `evaluate_site` is built for it: give it a random point, 
+random settings (for example a different `head_m` from a water-depth guess) and a random sunshine year, and keep 
+the result. Count how often `EmptyClusterError` appears (that is "not farmland"). A policy test, such as a subsidy 
+on pump cost, simply changes the cost figure afterwards. Each run is independent, so thousands can run side by side. 
+The details are in the docstring at the top of `dss_pipeline.py`. Additionally, multithreading can be leveraged for
+parallel en masse computes with current implementation.
 
-| What varies | How it plugs into `dss_pipeline.py` |
-|---|---|
-| **Where**: random farm sites in a district | Pick random parcels from the `load_parcels()` table and use a point inside each one. Sites with no farmland raise `EmptyClusterError`; count them as "not farmland" and skip. |
-| **Engineering inputs**: groundwater depth, pump efficiency, pumping hours | Build each draw with `dataclasses.replace(dss.DEFAULT_PARAMS, head_m=...)`. `DesignParameters` is frozen, so draws never overwrite each other. |
-| **Sunshine**: a bad year, a good year | Pass your own `get_solar(lat, lon)` function to `evaluate_site`. It returns a `SolarResource`, so it can sample years instead of using NASA's long-term average. |
-| **Policy**: a pump subsidy, a price paid for surplus electricity | Apply it **after** the run to the outputs: `pump.total_capex_usd` (cost) and `e_excess_kwh_day` (surplus). The engine does not need to know about policy. |
-
-Sketch (not shipped as a script; tested offline with a fixed `get_solar`):
-
-```python
-import dataclasses
-import random
-
-import dss_pipeline as dss
-
-rng = random.Random(42)  # seeded, so every run draws the same sites
-parcels = dss.load_parcels()
-points = parcels.geometry.representative_point().to_crs(dss.WGS84)  # one point inside each parcel
-
-results = []
-for _ in range(1000):
-    i = rng.randrange(len(points))  # draw a site: a random parcel
-    params = dataclasses.replace(dss.DEFAULT_PARAMS, head_m=rng.uniform(20, 80))  # draw a water depth
-
-    try:
-        a = dss.evaluate_site(parcels, points.y.iloc[i], points.x.iloc[i], params)  # or get_solar=my_sampler
-    except dss.EmptyClusterError:
-        continue  # not usable farmland, skip
-
-    results.append((a.energy.pump.total_capex_usd, a.energy.e_excess_kwh_day))
-```
-
-Practical notes:
-
-- **Speed:** with the parcel file loaded and the spatial index built, one site takes a few milliseconds. The only
-  slow part is NASA: one request per 0.01-degree cell (the cache covers repeats). For large runs, download or
-  look up the sunshine data once per region and serve it through `get_solar`.
-- **Reproducibility:** seed the random generator and record the seed with the results.
-- **Parallel runs:** each draw is independent, so draws can be split across processes. Every worker loads the
-  parcel file once.
-- **What the results would show:** with this catalog, the yearly-average surplus is usually zero (see the findings
-  above), so a policy study should look at the monthly profile (`SiteAssessment.monthly_profile()`) or at how
-  often a site reaches a surplus at all.
 
 ## Sample output (site [2])
 
