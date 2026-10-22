@@ -1,0 +1,12 @@
+# Python >= 3.10.
+# Verified: Python 3.12 with current releases (geopandas 1.2.0, pyogrio 0.13.0, shapely 2.2.0, pyproj 3.8.0,
+# pandas 3.0.6, numpy 2.5.4) and Python 3.10 pinned to every lower bound below.
+geopandas>=1.0
+pyogrio>=0.9
+shapely>=2.0
+pyproj>=3.6
+pandas>=2.1
+numpy>=1.26
+
+# tests
+pytest>=8.0
