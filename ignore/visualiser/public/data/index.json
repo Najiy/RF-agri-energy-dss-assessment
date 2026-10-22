@@ -1,0 +1,30 @@
+[
+ {
+  "name": "alentejo-resited",
+  "label": "Spec Alentejo point, re-sited to nearest parcel",
+  "lat": 38.01571348465243,
+  "lon": -7.880896315227853,
+  "file": "data/alentejo-resited.json"
+ },
+ {
+  "name": "alentejo-mixed",
+  "label": "Alentejo mixed-crop cluster",
+  "lat": 37.97883,
+  "lon": -7.73698,
+  "file": "data/alentejo-mixed.json"
+ },
+ {
+  "name": "tras-os-montes",
+  "label": "Dense mixed farmland, north-east Portugal",
+  "lat": 41.85417,
+  "lon": -6.76829,
+  "file": "data/tras-os-montes.json"
+ },
+ {
+  "name": "lisbon",
+  "label": "Central Lisbon (urban, no farmland)",
+  "lat": 38.722,
+  "lon": -9.139,
+  "file": "data/lisbon.json"
+ }
+]
